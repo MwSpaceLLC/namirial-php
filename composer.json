@@ -15,5 +15,8 @@
             "homepage": "https://mwspace.com",
             "role": "CTO"
         }
-    ]
+    ],
+    "require": {
+        "symfony/var-dumper": "^4.2"
+    }
 }
