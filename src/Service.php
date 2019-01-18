@@ -10,7 +10,7 @@
  * You should have received a copy of the GNU General Public License
  * along with namirial-php.  If not, see <http://www.gnu.org/licenses/>.
  *
- * To work without composer autoload, include manually all class */ 
+ * To work without composer autoload, include manually all class */
 
 require_once __DIR__ . '/assets/SignIntegrationService.php';
 
@@ -105,9 +105,22 @@ final class Service
      * @param bool $withTimestamp
      * @return $this
      */
-    public function PDFsetPreference(bool $withTimestamp = false)
+    private function PDFsetPreference(bool $withTimestamp = false)
     {
-        $this->signPreferences = new \PAdEsPreferences;
+        $this->signPreferences = new \pAdESPreferences;
+        $this->client->signPreference = 'PAdES';
+
+        return $this->signPreferences;
+    }
+
+    /**
+     * @param bool $withTimestamp
+     * @return \PAdEsPreferences
+     */
+    private function PAdEsPreferences(bool $withTimestamp = false)
+    {
+        $this->signPreferences = new \pAdESPreferences;
+        $this->client->signPreference = 'PAdES';
 
         return $this->signPreferences;
     }
@@ -116,9 +129,22 @@ final class Service
      * @param bool $withTimestamp
      * @return $this
      */
-    public function XMLsetPreference(bool $withTimestamp = false)
+    private function XMLsetPreference(bool $withTimestamp = false)
     {
         $this->signPreferences = new \xAdESPreferences;
+        $this->client->signPreference = 'XAdES';
+
+        return $this->signPreferences;
+    }
+
+    /**
+     * @param bool $withTimestamp
+     * @return \xAdESPreferences
+     */
+    private function XAdESPreferences(bool $withTimestamp = false)
+    {
+        $this->signPreferences = new \xAdESPreferences;
+        $this->client->signPreference = 'XAdES';
 
         return $this->signPreferences;
     }
@@ -127,31 +153,33 @@ final class Service
      * @param bool $withTimestamp
      * @return $this
      */
-    public function P7MsetPreference(bool $withTimestamp = false)
+    private function P7MsetPreference(bool $withTimestamp = false)
     {
-        $this->signPreferences = new \CAdEsPreferences;
+        $this->signPreferences = new \cAdESPreferences;
+        $this->client->signPreference = 'CAdES';
 
         return $this->signPreferences;
     }
 
     /**
-     * @return $this
+     * @param bool $withTimestamp
+     * @return \cAdESPreferences
      */
-    public function withTimestamp(string $timestampUrl)
+    private function CAdEsPreferences(bool $withTimestamp = false)
     {
-        $this->signPreferences->withTimestamp = true;
-        $this->signPreferences->timestampUrl = $timestampUrl;
-        $this->signPreferences->timestampUsername = $timestampUsername;
-        $this->signPreferences->timestampPassword = $timestampPassword;
-        return $this;
+        $this->signPreferences = new \cAdESPreferences;
+        $this->client->signPreference = 'CAdES';
+
+        return $this->signPreferences;
     }
 
     /**
      * @param string $filepath
-     * @return $this
+     * @param string|null $signPreference
+     * @return bool
      * @throws \Exception
      */
-    public function sign(string $filepath)
+    public function sign(string $filepath, string $signPreference = null)
     {
 
         if (!file_exists($filepath)) {
@@ -176,15 +204,47 @@ final class Service
             $params->credentials = $this->credentials;
             $params->buffer = file_get_contents($filepath);
 
-            $params->AdESPreferences = self::$setPreference();
+            if ($signPreference) {
+
+                $signPreference = $signPreference.'Preferences';
+
+                if (!method_exists($this,$signPreference)) {
+
+                    throw new \Exception('Signature Preference not allowed. (CAdES, XAdES or PAdES)');
+                }
+
+                $params->AdESPreferences = self::$signPreference();
+            } else {
+                $params->AdESPreferences = self::$setPreference();
+            }
+
+            $this->job = new \stdClass;
+            $this->job->signFile = true;
 
             /**
              * Send Object to Namirial WS
              */
             $response = $this->client->signWithCredentials($params);
 
-            $this->response = isset($response->return) ? $response->return : $response;
-            return $this;
+            if (isset($response->return)) {
+
+                /**
+                 * Create Client Helper
+                 */
+                $this->client->sign = new \stdClass;
+                $this->client->sign->filepath = $filepath;
+                $this->client->sign->fileformat = pathinfo($filepath, PATHINFO_EXTENSION);
+
+                /** File has been signed */
+                $this->response = $response->return;
+
+                return true;
+
+            } else {
+                /** File cant be signed */
+
+                return false;
+            }
 
         } catch (\SoapFault $e) {
 
@@ -193,13 +253,14 @@ final class Service
              */
 
             $this->response = $e->getMessage();
-            return $this;
+            return false;
         }
     }
 
     /**
+     * Verify if Signature is Valid
      * @param string $filepath
-     * @return $this
+     * @return $this|bool
      * @throws \Exception
      */
     public function verify(string $filepath)
@@ -224,80 +285,18 @@ final class Service
             $response = $this->client->verify($obj);
             $this->response = $response->return;
 
-            /**
-             * Create Client Helper
-             */
-            $this->client->verify = new \stdClass;
-            $this->client->verify->filepath = $filepath;
-            $this->client->verify->fileformat = pathinfo($filepath, PATHINFO_EXTENSION);
-
-            return $this;
-
-        } catch (\SoapFault $e) {
-
-            /**
-             * File not signed, exclude default Soap Fault
-             */
-            $this->response = $e->detail->WSException;
-            return $this;
-        }
-    }
-
-    /**
-     * @param string|null $filepath
-     */
-    public function save(string $directory = null)
-    {
-
-        if (is_file($directory)) {
-            throw new \Exception('This parameter can be only a dir/');
-        }
-
-        if (!isset($this->response->overallVerified)) {
-            if (!isset($this->response->return)) {
-                throw new \Exception('U try to save empty response');
-            }
-        }
-
-        if ($this->response->overallVerified) {
-            $Dir = str_replace(basename($this->client->verify->filepath), '', $this->client->verify->filepath);
-            $File = str_replace('.p7m', '', basename($this->client->verify->filepath));
-            $directory = isset($directory) ? rtrim(trim($directory), '/') : rtrim(trim($Dir), '/');
-
-            file_put_contents("$directory/$File", $this->response->plainDocument);
-        }
-
-    }
-
-    /**
-     * Verify if Signature is Valid
-     * @param string $filepath
-     * @return $this|bool
-     * @throws \Exception
-     */
-    public function isValid(string $filepath)
-    {
-
-        if (!file_exists($filepath)) {
-            throw new \Exception('File not found at ' . $filepath);
-        }
-
-        if (!in_array(strtoupper(pathinfo($filepath, PATHINFO_EXTENSION)), array('PDF', 'XML', 'P7M'))) {
-            throw new \Exception('File Format (.' . pathinfo($filepath, PATHINFO_EXTENSION) . ') not allowed');
-        }
-
-        try {
-            /**  Create Objet */
-            $obj = new \verify;
-            $obj->signedContent = file_get_contents($filepath);
-
-            /**
-             * Send Object to Namirial WS
-             */
-            $response = $this->client->verify($obj);
-            $this->response = $response->return;
+            $this->job = new \stdClass;
+            $this->job->verifyFile = true;
 
             if ($this->response->overallVerified) {
+
+                /**
+                 * Create Client Helper
+                 */
+                $this->client->verify = new \stdClass;
+                $this->client->verify->filepath = $filepath;
+                $this->client->verify->fileformat = pathinfo($filepath, PATHINFO_EXTENSION);
+
                 //File's Signature is VALID
                 return true;
             } else {
@@ -315,6 +314,121 @@ final class Service
         }
     }
 
+    /**
+     * @param string|null $filepath
+     */
+    public function save(string $filepath = null)
+    {
+
+        if (!isset($this->response->overallVerified)) {
+            if (!isset($this->response)) {
+                throw new \Exception('Try to save empty response');
+            }
+        }
+
+        /**
+         * LOAD RESPONSE FROM FILE VERIFICATION
+         */
+        if (isset($this->job->verifyFile)) {
+            if ($this->response->overallVerified) {
+                if ($filepath) {
+
+                    try {
+
+                        $directory = dirname($filepath);
+
+                        /** Create dir if not exist */
+                        if (!is_dir($directory)) {
+                            mkdir($directory);
+                        }
+
+                        (file_put_contents($filepath, file_get_contents($this->client->verify->filepath)));
+
+                        /** OLD FILE NAME has been saved */
+                        return $filepath;
+                    } catch (\Exception $exception) {
+                        throw new \Exception($exception->getMessage());
+                    }
+
+                } else {
+
+                    $extention = pathinfo($this->client->verify->filepath, PATHINFO_EXTENSION);
+                    $directory = dirname($this->client->verify->filepath);
+                    $randompath = $directory . '/' . str_random(25) . '.' . $extention;
+
+                    try {
+
+                        (file_put_contents($randompath, file_get_contents($this->client->verify->filepath)));
+                        /**
+                         * CUSTOM FILE NAME has been saved
+                         */
+                        return $randompath;
+                    } catch (\Exception $exception) {
+                        throw new \Exception($exception->getMessage());
+                    }
+                }
+            } else {
+                throw new \Exception('File not have valid signature.');
+            }
+        }
+
+        /**
+         * LOAD RESPONSE FROM FILE SIGNATURE
+         */
+        if (isset($this->job->signFile)) {
+            if (isset($this->response)) {
+                if ($filepath) {
+
+                    /** Check if p7m */
+                    if($this->client->signPreference === 'CAdES'){
+                        $filepath .= '.p7m';
+                    }
+
+                    try {
+
+                        $directory = dirname($filepath);
+
+                        /** Create dir if not exist */
+                        if (!is_dir($directory)) {
+                            mkdir($directory);
+                        }
+
+                        (file_put_contents($filepath, $this->response));
+
+                        /** OLD FILE NAME has been saved */
+                        return $filepath;
+                    } catch (\Exception $exception) {
+                        throw new \Exception($exception->getMessage());
+                    }
+
+                } else {
+
+                    $extention = pathinfo($this->client->sign->filepath, PATHINFO_EXTENSION);
+                    $directory = dirname($this->client->sign->filepath);
+                    $randompath = $directory . '/' . str_random(25) . '.' . $extention;
+
+                    /** Check if p7m */
+                    if($this->client->signPreference === 'CAdES'){
+                        $randompath .= '.p7m';
+                    }
+
+                    try {
+
+                        (file_put_contents($randompath, $this->response));
+                        /**
+                         * CUSTOM FILE NAME has been saved
+                         */
+                        return $randompath;
+                    } catch (\Exception $exception) {
+                        throw new \Exception($exception->getMessage());
+                    }
+                }
+            } else {
+                throw new \Exception('File Signature Response not found');
+            }
+        }
+
+    }
 
     /**
      * @throws \Exception

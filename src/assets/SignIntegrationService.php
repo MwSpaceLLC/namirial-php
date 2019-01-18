@@ -29,6 +29,9 @@ class credentials {
 }
 
 class cAdESPreferences extends timeStampPreferences {
+    public $counterSignature;
+    public $counterSignatureIndex;
+    public $detached;
 }
 
 class signPreferences {
