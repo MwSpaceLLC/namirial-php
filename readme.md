@@ -22,3 +22,15 @@ $namirial = new Appliance\Namirial\Service('ip address of sws');
 $namirial->sign('path/to/file/ALB1666197.xml'); 
 ```
 🚀 The appliance will discover the file format automatically by choosing the most appropriate format for you 
+
+> Verify File (CAdES,XAdES,PAdES)
+```
+$namirial->verify('path/to/file/ALB1666197.p7m'); 
+```
+🎂 The appliance will verify the signature of the file if it is trusted or not
+
+> Save File (CAdES,XAdES,PAdES)
+```
+$namirial->save('path/to/file/ALB1666197_signed.xml'); 
+```
+👻 The appliance will save the file in a directory by creating it if necessary
