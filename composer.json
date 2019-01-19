@@ -1,12 +1,13 @@
 {
   "name": "appliance/namirial-php",
   "description": "A PHP package for work with namirial sws",
+  "keywords": ['soap','soap sws','namirial','namirial php'],
   "autoload": {
     "psr-4": {
       "Appliance\\Namirial\\": "src/"
     }
   },
-  "license": "GPL-3.0-or-later",
+  "license": "MIT",
   "authors": [
     {
       "name": "Aleksandr Ivanovitch",
@@ -16,6 +17,9 @@
     }
   ],
   "require": {
-    "symfony/var-dumper": "^4.2"
+    "symfony/var-dumper": "^4.2",
+    "ext-soap": "*",
+    "ext-xml": "*",
+    "php": "^7.1",
   }
 }

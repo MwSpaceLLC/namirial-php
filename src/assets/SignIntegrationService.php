@@ -165,6 +165,9 @@ class pAdESPreferences extends timeStampPreferences {
     public $page; // int
     public $signerImage; // signerImage
     public $signerImageReference; // string
+    public $needAppearanceDisabled;
+    public $withSignatureField;
+
 }
 
 class signerImage {
@@ -179,6 +182,7 @@ class signerImage {
     public $reason; // string
     public $signerName; // string
     public $textVisible; // boolean
+    public $imageVisible;
     public $width; // int
     public $x; // int
     public $y; // int

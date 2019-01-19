@@ -31,6 +31,7 @@ final class Service
      * @var $response
      */
     private $client;
+
     private $response;
 
     /**
@@ -40,6 +41,8 @@ final class Service
      */
     public function __construct(string $ipaddress = null)
     {
+
+        self::extension_loaded();
 
         $location = 'http://' . $ipaddress . ':8080/SignEngineWeb/services';
 
@@ -74,6 +77,11 @@ final class Service
         return $this->debug;
     }
 
+    public function report()
+    {
+        return $this->response->noteReportList;
+    }
+
     /**
      * @param string $username
      * @param string $password
@@ -103,37 +111,25 @@ final class Service
 
     /**
      * @param bool $withTimestamp
-     * @return $this
-     */
-    private function PDFsetPreference(bool $withTimestamp = false)
-    {
-        $this->signPreferences = new \pAdESPreferences;
-        $this->client->signPreference = 'PAdES';
-
-        return $this->signPreferences;
-    }
-
-    /**
-     * @param bool $withTimestamp
-     * @return \PAdEsPreferences
+     * @return \pAdESPreferences
      */
     private function PAdEsPreferences(bool $withTimestamp = false)
     {
+
+        $signerImage = new \signerImage;
+        $signerImage->image = file_get_contents(__DIR__ . "/assets/logo_firmacerta.jpg");
+        $signerImage->x = 0;
+        $signerImage->y = 100;
+        $signerImage->width = 500;
+        $signerImage->height = 500;
+        $signerImage->textVisible = isset($this->client->textVisible) ? $this->client->textVisible : TRUE;
+
         $this->signPreferences = new \pAdESPreferences;
+
+        $this->signPreferences->page = isset($this->client->pageStamp) ? $this->client->pageStamp : 1;
+        $this->signPreferences->signerImage = $signerImage;
+
         $this->client->signPreference = 'PAdES';
-
-        return $this->signPreferences;
-    }
-
-    /**
-     * @param bool $withTimestamp
-     * @return $this
-     */
-    private function XMLsetPreference(bool $withTimestamp = false)
-    {
-        $this->signPreferences = new \xAdESPreferences;
-        $this->client->signPreference = 'XAdES';
-
         return $this->signPreferences;
     }
 
@@ -144,20 +140,8 @@ final class Service
     private function XAdESPreferences(bool $withTimestamp = false)
     {
         $this->signPreferences = new \xAdESPreferences;
+
         $this->client->signPreference = 'XAdES';
-
-        return $this->signPreferences;
-    }
-
-    /**
-     * @param bool $withTimestamp
-     * @return $this
-     */
-    private function P7MsetPreference(bool $withTimestamp = false)
-    {
-        $this->signPreferences = new \cAdESPreferences;
-        $this->client->signPreference = 'CAdES';
-
         return $this->signPreferences;
     }
 
@@ -168,18 +152,19 @@ final class Service
     private function CAdEsPreferences(bool $withTimestamp = false)
     {
         $this->signPreferences = new \cAdESPreferences;
-        $this->client->signPreference = 'CAdES';
 
+        $this->client->signPreference = 'CAdES';
         return $this->signPreferences;
     }
 
     /**
      * @param string $filepath
+     * @param bool $return
      * @param string|null $signPreference
-     * @return bool
+     * @return Service|bool
      * @throws \Exception
      */
-    public function sign(string $filepath, string $signPreference = null)
+    public function sign(string $filepath, bool $return = false, string $signPreference = null)
     {
 
         if (!file_exists($filepath)) {
@@ -187,15 +172,30 @@ final class Service
         }
 
         /**
+         * Create Client Helper
+         */
+        $this->client->sign = new \stdClass;
+        $this->client->sign->filepath = $filepath;
+        $this->client->sign->fileformat = pathinfo($filepath, PATHINFO_EXTENSION);
+
+        /**
          * Find wich preference has been to set (PDF,XML o P7M)
          */
 
-        if (!in_array(strtoupper(pathinfo($filepath, PATHINFO_EXTENSION)), array('PDF', 'XML', 'P7M'))) {
-            throw new \Exception('File Format (.' . pathinfo($filepath, PATHINFO_EXTENSION) . ') not allowed, check ' . $filepath);
+        switch (strtoupper(pathinfo($filepath, PATHINFO_EXTENSION))) {
+            case 'PDF':
+                $setPreference = 'PAdESPreferences';
+                break;
+            case 'XML':
+                $setPreference = 'XAdESPreferences';
+                break;
+            default:
+                $setPreference = 'CAdESPreferences';
         }
 
-        $setPreference = strtoupper(pathinfo($filepath, PATHINFO_EXTENSION)) . 'setPreference';
-
+        /**
+         * Find wich preference has been to set (PDF,XML o P7M)
+         */
         try {
 
             /**  Create Objet */
@@ -206,9 +206,9 @@ final class Service
 
             if ($signPreference) {
 
-                $signPreference = $signPreference.'Preferences';
+                $signPreference = $signPreference . 'Preferences';
 
-                if (!method_exists($this,$signPreference)) {
+                if (!method_exists($this, $signPreference)) {
 
                     throw new \Exception('Signature Preference not allowed. (CAdES, XAdES or PAdES)');
                 }
@@ -228,22 +228,15 @@ final class Service
 
             if (isset($response->return)) {
 
-                /**
-                 * Create Client Helper
-                 */
-                $this->client->sign = new \stdClass;
-                $this->client->sign->filepath = $filepath;
-                $this->client->sign->fileformat = pathinfo($filepath, PATHINFO_EXTENSION);
-
                 /** File has been signed */
                 $this->response = $response->return;
 
-                return true;
+                return ($return) ? true : $this;
 
             } else {
                 /** File cant be signed */
 
-                return false;
+                return ($return) ? false : $this;
             }
 
         } catch (\SoapFault $e) {
@@ -253,17 +246,32 @@ final class Service
              */
 
             $this->response = $e->getMessage();
-            return false;
+            return ($return) ? false : $this;
         }
     }
 
     /**
-     * Verify if Signature is Valid
-     * @param string $filepath
-     * @return $this|bool
+     * @return $this
      * @throws \Exception
      */
-    public function verify(string $filepath)
+    public function force()
+    {
+        if ($this->job->verifyFile) {
+            $this->client->forceVerify = true;
+            return $this;
+        } else {
+
+            throw new \Exception('Verify method not found');
+        }
+    }
+
+    /**
+     * @param string $filepath
+     * @param bool $return
+     * @return $this
+     * @throws \Exception
+     */
+    public function verify(string $filepath, bool $return = null)
     {
 
         if (!file_exists($filepath)) {
@@ -273,6 +281,16 @@ final class Service
         if (!in_array(strtoupper(pathinfo($filepath, PATHINFO_EXTENSION)), array('PDF', 'XML', 'P7M'))) {
             throw new \Exception('File Format (.' . pathinfo($filepath, PATHINFO_EXTENSION) . ') not allowed');
         }
+
+        $this->job = new \stdClass;
+        $this->job->verifyFile = true;
+
+        /**
+         * Create Client Helper
+         */
+        $this->client->verify = new \stdClass;
+        $this->client->verify->filepath = $filepath;
+        $this->client->verify->fileformat = pathinfo($filepath, PATHINFO_EXTENSION);
 
         try {
             /**  Create Objet */
@@ -285,23 +303,14 @@ final class Service
             $response = $this->client->verify($obj);
             $this->response = $response->return;
 
-            $this->job = new \stdClass;
-            $this->job->verifyFile = true;
-
             if ($this->response->overallVerified) {
 
-                /**
-                 * Create Client Helper
-                 */
-                $this->client->verify = new \stdClass;
-                $this->client->verify->filepath = $filepath;
-                $this->client->verify->fileformat = pathinfo($filepath, PATHINFO_EXTENSION);
-
                 //File's Signature is VALID
-                return true;
+                return ($return) ? true : $this;
+
             } else {
                 //File's Signature is NOT VALID
-                return false;
+                return ($return) ? false : $this;
             }
 
         } catch (\SoapFault $e) {
@@ -310,12 +319,23 @@ final class Service
              * File not signed, exclude default Soap Fault
              */
             $this->response = $e->detail->WSException;
-            return $this;
+            return ($return) ? false : $this;
         }
     }
 
     /**
+     * @param string $filepath
+     * @throws \Exception
+     */
+    public function isValid(string $filepath)
+    {
+        self::verify($filepath, true);
+    }
+
+    /**
      * @param string|null $filepath
+     * @return string
+     * @throws \Exception
      */
     public function save(string $filepath = null)
     {
@@ -330,7 +350,7 @@ final class Service
          * LOAD RESPONSE FROM FILE VERIFICATION
          */
         if (isset($this->job->verifyFile)) {
-            if ($this->response->overallVerified) {
+            if (isset($this->client->forceVerify) || $this->response->overallVerified) {
                 if ($filepath) {
 
                     try {
@@ -352,13 +372,31 @@ final class Service
 
                 } else {
 
+//                    dd($this->client->verify->filepath);
+
+                    /** Check if p7m */
+                    if (pathinfo($this->client->verify->filepath, PATHINFO_EXTENSION) === 'p7m') {
+                        $this->client->verify->filepath = str_replace('.p7m', '', $this->client->verify->filepath);
+                        $contentFile = $this->response->plainDocument;
+                    } else {
+                        $contentFile = file_get_contents($this->client->verify->filepath);
+                    }
+
                     $extention = pathinfo($this->client->verify->filepath, PATHINFO_EXTENSION);
                     $directory = dirname($this->client->verify->filepath);
-                    $randompath = $directory . '/' . str_random(25) . '.' . $extention;
+                    $randompath = $directory . '/signed/';
+
+                    /** Create dir if not exist */
+                    if (!is_dir($randompath)) {
+                        mkdir($randompath);
+                    }
+
+                    $randompath .= str_random(25) . '.' . $extention;
 
                     try {
 
-                        (file_put_contents($randompath, file_get_contents($this->client->verify->filepath)));
+                        (file_put_contents($randompath, $contentFile));
+
                         /**
                          * CUSTOM FILE NAME has been saved
                          */
@@ -380,7 +418,7 @@ final class Service
                 if ($filepath) {
 
                     /** Check if p7m */
-                    if($this->client->signPreference === 'CAdES'){
+                    if ($this->client->signPreference === 'CAdES') {
                         $filepath .= '.p7m';
                     }
 
@@ -405,10 +443,17 @@ final class Service
 
                     $extention = pathinfo($this->client->sign->filepath, PATHINFO_EXTENSION);
                     $directory = dirname($this->client->sign->filepath);
-                    $randompath = $directory . '/' . str_random(25) . '.' . $extention;
+                    $randompath = $directory . '/signed/';
+
+                    /** Create dir if not exist */
+                    if (!is_dir($randompath)) {
+                        mkdir($randompath);
+                    }
+
+                    $randompath .= str_random(25) . '.' . $extention;
 
                     /** Check if p7m */
-                    if($this->client->signPreference === 'CAdES'){
+                    if ($this->client->signPreference === 'CAdES') {
                         $randompath .= '.p7m';
                     }
 
@@ -472,6 +517,16 @@ final class Service
     public function dump()
     {
         return dump($this);
+    }
+
+    /**
+     * @throws \Exception
+     */
+    protected function extension_loaded()
+    {
+        if (!extension_loaded($dll = 'soap')) {
+            throw new \Exception(ucfirst($dll) . ' php module are required for this library. Please install .dll');
+        }
     }
 
 }
