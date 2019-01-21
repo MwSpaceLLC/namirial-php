@@ -12,7 +12,12 @@
  *
  * To work without composer autoload, include manually all class */
 
-require_once __DIR__ . '/assets/SignIntegrationService.php';
+if (!extension_loaded('soap')) {
+    throw new \Exception('Soap php module are required for this library. Please install .dll');
+
+} else {
+    require_once __DIR__ . '/assets/SignIntegrationService.php';
+}
 
 /**
  * SignIntegrationService
@@ -164,7 +169,7 @@ final class Service
      * @return Service|bool
      * @throws \Exception
      */
-    public function sign(string $filepath, bool $return = false, string $signPreference = null)
+    public function sign(string $filepath, string $signPreference = null , bool $return = null)
     {
 
         if (!file_exists($filepath)) {
@@ -353,6 +358,13 @@ final class Service
             if (isset($this->client->forceVerify) || $this->response->overallVerified) {
                 if ($filepath) {
 
+                    /** Check if p7m */
+                    if (pathinfo($this->client->verify->filepath, PATHINFO_EXTENSION) === 'p7m') {
+                        $contentFile = $this->response->plainDocument;
+                    } else {
+                        $contentFile = file_get_contents($this->client->verify->filepath);
+                    }
+
                     try {
 
                         $directory = dirname($filepath);
@@ -362,7 +374,7 @@ final class Service
                             mkdir($directory);
                         }
 
-                        (file_put_contents($filepath, file_get_contents($this->client->verify->filepath)));
+                        (file_put_contents($filepath, $contentFile));
 
                         /** OLD FILE NAME has been saved */
                         return $filepath;
@@ -371,8 +383,6 @@ final class Service
                     }
 
                 } else {
-
-//                    dd($this->client->verify->filepath);
 
                     /** Check if p7m */
                     if (pathinfo($this->client->verify->filepath, PATHINFO_EXTENSION) === 'p7m') {
@@ -384,7 +394,7 @@ final class Service
 
                     $extention = pathinfo($this->client->verify->filepath, PATHINFO_EXTENSION);
                     $directory = dirname($this->client->verify->filepath);
-                    $randompath = $directory . '/signed/';
+                    $randompath = $directory . '/verify/';
 
                     /** Create dir if not exist */
                     if (!is_dir($randompath)) {
@@ -419,7 +429,9 @@ final class Service
 
                     /** Check if p7m */
                     if ($this->client->signPreference === 'CAdES') {
-                        $filepath .= '.p7m';
+                        if(pathinfo($filepath, PATHINFO_EXTENSION) !== 'p7m'){
+                            throw new \Exception('Cant save CAdES file withoud .p7m');
+                        }
                     }
 
                     try {
@@ -435,6 +447,24 @@ final class Service
 
                         /** OLD FILE NAME has been saved */
                         return $filepath;
+                    } catch (\Exception $exception) {
+                        throw new \Exception($exception->getMessage());
+                    }
+
+                } elseif (isset($this->client->override)) {
+
+                    /** Check if p7m */
+                    if ($this->client->signPreference === 'CAdES') {
+                        throw new \Exception('Override funct not work with .p7m file');
+                    }
+
+                    try {
+
+                        (file_put_contents($this->client->sign->filepath, $this->response));
+                        /**
+                         * FILE has been overrided
+                         */
+                        return $this->client->sign->filepath;
                     } catch (\Exception $exception) {
                         throw new \Exception($exception->getMessage());
                     }
@@ -474,6 +504,16 @@ final class Service
         }
 
     }
+
+    /**
+     * @throws \Exception
+     */
+    public function override()
+    {
+        $this->client->override = true;
+        self::save();
+    }
+
 
     /**
      * @throws \Exception

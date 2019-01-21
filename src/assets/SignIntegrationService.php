@@ -12,7 +12,6 @@
  *
  * To work without composer autoload, include manually all class */
 
-
 class signCAdESRemote {
     public $credentials; // credentials
     public $buffer; // base64Binary
