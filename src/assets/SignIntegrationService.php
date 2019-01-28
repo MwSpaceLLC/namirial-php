@@ -668,7 +668,7 @@ class SignIntegrationService extends SoapClient {
      * @param $wsdl
      * @param array $options
      */
-    public function SignIntegrationService($wsdl, $options = array()) {
+    public function __construct($wsdl, $options = array()) {
         foreach(self::$classmap as $key => $value) {
             if(!isset($options['classmap'][$key])) {
                 $options['classmap'][$key] = $value;

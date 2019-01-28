@@ -169,7 +169,7 @@ final class Service
      * @return Service|bool
      * @throws \Exception
      */
-    public function sign(string $filepath, string $signPreference = null , bool $return = null)
+    public function sign(string $filepath, string $signPreference = null, bool $return = null)
     {
 
         if (!file_exists($filepath)) {
@@ -429,7 +429,7 @@ final class Service
 
                     /** Check if p7m */
                     if ($this->client->signPreference === 'CAdES') {
-                        if(pathinfo($filepath, PATHINFO_EXTENSION) !== 'p7m'){
+                        if (pathinfo($filepath, PATHINFO_EXTENSION) !== 'p7m') {
                             throw new \Exception('Cant save CAdES file withoud .p7m');
                         }
                     }
@@ -501,6 +501,38 @@ final class Service
             } else {
                 throw new \Exception('File Signature Response not found');
             }
+        }
+
+    }
+
+    /**
+     * Verify if Virtual Device of Namirial sws exist.
+     */
+    public function checkDevice()
+    {
+
+        $domtree = new \DOMDocument('1.0', 'UTF-8');
+        $xmlRoot = $domtree->createElement("xml");
+        $xmlRoot = $domtree->appendChild($xmlRoot);
+        $currentTrack = $domtree->createElement("verifySign");
+        $currentTrack = $xmlRoot->appendChild($currentTrack);
+        $currentTrack->appendChild($domtree->createElement('username', $this->credentials->username));
+        $currentTrack->appendChild($domtree->createElement('password', $this->credentials->password));
+
+        $params = new \signWithCredentials;
+        $params->credentials = $this->credentials;
+        $params->buffer = $domtree->saveXML();
+
+        $params->AdESPreferences = self::XAdESPreferences();
+
+        try {
+
+            /** Try to response if exist */
+            $response = $this->client->signWithCredentials($params);
+
+        } catch (\SoapFault $exception) {
+
+            throw new \Exception($exception->getMessage());
         }
 
     }
