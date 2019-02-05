@@ -40,14 +40,12 @@ final class Service
     private $response;
 
     /**
-     * Saty constructor.
-     * @param string $address
-     * @param bool $trace
+     * Service constructor.
+     * @param string|null $ipaddress
+     * @throws \Exception
      */
     public function __construct(string $ipaddress = null)
     {
-
-        self::extension_loaded();
 
         $location = 'http://' . $ipaddress . ':8080/SignEngineWeb/services';
 
@@ -64,7 +62,7 @@ final class Service
     }
 
     /**
-     * @return SatyClientDebug
+     * @return \stdClass
      */
     public function debug()
     {
@@ -82,6 +80,9 @@ final class Service
         return $this->debug;
     }
 
+    /**
+     * @return mixed
+     */
     public function report()
     {
         return $this->response->noteReportList;
@@ -256,6 +257,141 @@ final class Service
     }
 
     /**
+     * @param string $filecontents
+     * @param string|null $signPreference
+     * @param bool|null $return
+     * @return Service|bool
+     * @throws \Exception
+     */
+    public function signContents(string $filecontents, string $signPreference = null, bool $return = null)
+    {
+
+        /**
+         * Create Client Helper
+         */
+        $this->client->sign = new \stdClass;
+        $this->client->sign->filecontents = $filecontents;
+
+        /**
+         * Get extention from buffer
+         */
+        $file_info = new \finfo(FILEINFO_MIME_TYPE);
+        $mime_type = $file_info->buffer($filecontents);
+        $extention = array_reverse(explode('/', $mime_type))[0];
+
+
+        $this->client->sign->filecontentsextention = $extention;
+
+        /**
+         * Find wich preference has been to set (PDF,XML o P7M)
+         */
+
+        switch (strtoupper($extention)) {
+            case 'PDF':
+                $setPreference = 'PAdESPreferences';
+                break;
+            case 'XML':
+                $setPreference = 'XAdESPreferences';
+                break;
+            default:
+                $setPreference = 'CAdESPreferences';
+        }
+
+        /**
+         * Find wich preference has been to set (PDF,XML o P7M)
+         */
+        try {
+
+            /**  Create Objet */
+
+            $params = new \signWithCredentials;
+            $params->credentials = $this->credentials;
+            $params->buffer = $filecontents;
+
+            if ($signPreference) {
+
+                $signPreference = $signPreference . 'Preferences';
+
+                if (!method_exists($this, $signPreference)) {
+
+                    throw new \Exception('Signature Preference not allowed. (CAdES, XAdES or PAdES)');
+                }
+
+                $params->AdESPreferences = self::$signPreference();
+            } else {
+                $params->AdESPreferences = self::$setPreference();
+            }
+
+            $this->job = new \stdClass;
+            $this->job->signFile = true;
+
+            /**
+             * Send Object to Namirial WS
+             */
+            $response = $this->client->signWithCredentials($params);
+
+            if (isset($response->return)) {
+
+                /** File has been signed */
+                $this->response = $response->return;
+
+                return ($return) ? true : $this;
+
+            } else {
+                /** File cant be signed */
+
+                return ($return) ? false : $this;
+            }
+
+        } catch (\SoapFault $e) {
+
+            /**
+             * File can't be signed, exclude default Soap Fault
+             */
+
+            $this->response = $e->getMessage();
+            return ($return) ? false : $this;
+        }
+    }
+
+    /**
+     * @return mixed
+     * @throws \Exception
+     */
+    public function get()
+    {
+        if (isset($this->client->sign->filecontents)) {
+            return $this->response;
+        } elseif (isset($this->client->verify->filecontents)) {
+
+            /**
+             * Try to check if p7m
+             */
+            if ($this->client->verify->fileformat === 'octet-stream') {
+
+                return $this->response->plainDocument;
+            } else {
+
+                return $this->client->verify->filecontents;
+            }
+
+        } else {
+
+            throw new \Exception('Get method return empty');
+        }
+    }
+
+    /**
+     * @return mixed
+     */
+    public function ext()
+    {
+        if (isset($this->client->sign->filecontents)) {
+            return '.' . $this->client->sign->filecontentsextention;
+        }
+    }
+
+    /**
      * @return $this
      * @throws \Exception
      */
@@ -301,6 +437,63 @@ final class Service
             /**  Create Objet */
             $obj = new \verify;
             $obj->signedContent = file_get_contents($filepath);
+
+            /**
+             * Send Object to Namirial WS
+             */
+            $response = $this->client->verify($obj);
+            $this->response = $response->return;
+
+            if ($this->response->overallVerified) {
+
+                //File's Signature is VALID
+                return ($return) ? true : $this;
+
+            } else {
+                //File's Signature is NOT VALID
+                return ($return) ? false : $this;
+            }
+
+        } catch (\SoapFault $e) {
+
+            /**
+             * File not signed, exclude default Soap Fault
+             */
+            $this->response = $e->detail->WSException;
+            return ($return) ? false : $this;
+        }
+    }
+
+    /**
+     * @param string $filecontents
+     * @param bool|null $return
+     * @return Service|bool
+     */
+    public function verifyContents(string $filecontents, bool $return = null)
+    {
+
+        $this->job = new \stdClass;
+        $this->job->verifyFile = true;
+
+        /**
+         * Create Client Helper
+         */
+        $this->client->verify = new \stdClass;
+        $this->client->verify->filecontents = $filecontents;
+
+        /**
+         * Get extention from buffer
+         */
+        $file_info = new \finfo(FILEINFO_MIME_TYPE);
+        $mime_type = $file_info->buffer($filecontents);
+        $extention = array_reverse(explode('/', $mime_type))[0];
+
+        $this->client->verify->fileformat = $extention;
+
+        try {
+            /**  Create Objet */
+            $obj = new \verify;
+            $obj->signedContent = $filecontents;
 
             /**
              * Send Object to Namirial WS
@@ -394,7 +587,7 @@ final class Service
 
                     $extention = pathinfo($this->client->verify->filepath, PATHINFO_EXTENSION);
                     $directory = dirname($this->client->verify->filepath);
-                    $randompath = $directory . '/verify/';
+                    $randompath = $directory . '/valid/';
 
                     /** Create dir if not exist */
                     if (!is_dir($randompath)) {
@@ -507,6 +700,8 @@ final class Service
 
     /**
      * Verify if Virtual Device of Namirial sws exist.
+     *
+     * @throws \Exception
      */
     public function checkDevice()
     {
@@ -573,6 +768,9 @@ final class Service
         die($this->client->__getLastRequest());
     }
 
+    /**
+     * @throws \Exception
+     */
     public function xmlResponse()
     {
         if (!isset($this->client->__last_response)) {
@@ -589,16 +787,6 @@ final class Service
     public function dump()
     {
         return dump($this);
-    }
-
-    /**
-     * @throws \Exception
-     */
-    protected function extension_loaded()
-    {
-        if (!extension_loaded($dll = 'soap')) {
-            throw new \Exception(ucfirst($dll) . ' php module are required for this library. Please install .dll');
-        }
     }
 
 }
