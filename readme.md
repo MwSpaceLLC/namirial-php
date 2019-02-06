@@ -1,4 +1,4 @@
-# Appliance Library <img src="https://www.namirial.com/wp-content/uploads/logo-namirial-information-tecnology.png" width="50">
+# Appliance Library <img src="https://www.namirial.com/wp-content/uploads/logo-namirial-information-tecnology.png" width="100">
 > Small PHP library for [Namirial SWS](https://www.firmacerta.it/index.php) services.
 
 PHP Version  | Status  | Require
