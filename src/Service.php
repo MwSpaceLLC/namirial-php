@@ -47,7 +47,18 @@ final class Service
     public function __construct(string $ipaddress = null)
     {
 
-        $location = 'http://' . $ipaddress . ':8080/SignEngineWeb/services';
+        if (is_null($ipaddress)) {
+            /**
+             * Set Public Machines <https://sws.firmacerta.it/SignEngineWeb/verify.xhtml>
+             */
+            $location = 'https://sws.firmacerta.it/SignEngineWeb/services';
+
+        } else {
+            /**
+             * Set personal Machines
+             */
+            $location = 'http://' . $ipaddress . ':8080/SignEngineWeb/services';
+        }
 
         $options = array(
             "location" => $location,

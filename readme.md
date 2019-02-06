@@ -9,11 +9,24 @@ PHP 7.2      | In Dev | Composer
 
 `composer require appliance/namirial-php`
 
+## Free Use (Verify Only)
+> Start Appliance Object & Retrive content of CAdES, XAdES & PAdES:
 
+```
+$namirial = new Appliance\Namirial\Service;
+$namirial->verify('path/to/file.p7m')->dump()
+// or 
+$namirial->verify('path/to/file.xml')->dump()
+```
+🤑 The class will connect via http protocol to [Namirial WSDL](https://www.firmacerta.it/index.php) & check the file signature.
+
+## Commercial Use
 > Start Appliance Object:
 
 ```
 $namirial = new Appliance\Namirial\Service('ip address of sws');
+
+$namirial->setAgent('username', 'password');
 ```
 💻 The class will connect via http protocol to your Web Service and load the functions from the WSDL
 > Sign File (CAdES,XAdES,PAdES)
